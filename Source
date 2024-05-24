@@ -3,6 +3,7 @@ local isHighlightingEnabled = true
 
 -- Original highlight color
 local originalHighlightColor = BrickColor.new("Bright red")
+local alternateHighlightColor = BrickColor.new("Bright green")
 
 -- Function to highlight a part or model
 local function highlightObject(object)
@@ -10,7 +11,7 @@ local function highlightObject(object)
         if isHighlightingEnabled then
             object.BrickColor = originalHighlightColor
         else
-            object.BrickColor = BrickColor.new("Bright green")
+            object.BrickColor = alternateHighlightColor
         end
     elseif object:IsA("Model") then
         local humanoid = object:FindFirstChildOfClass("Humanoid")
@@ -20,7 +21,7 @@ local function highlightObject(object)
                     if isHighlightingEnabled then
                         part.BrickColor = originalHighlightColor
                     else
-                        part.BrickColor = BrickColor.new("Bright green")
+                        part.BrickColor = alternateHighlightColor
                     end
                 end
             end
@@ -28,63 +29,82 @@ local function highlightObject(object)
     end
 end
 
--- Function to check if an object is a player
-local function isPlayer(object)
-    return object:IsA("Player")
-end
-
 -- Function to check if an object should be excluded
 local function shouldObjectBeExcluded(object)
-    -- Add conditions to exclude specific objects here
-    return isPlayer(object) or object:IsDescendantOf(game.Players) or object:FindFirstChildOfClass("Humanoid") -- Exclude players, their models, and models with a humanoid
+    return object:IsDescendantOf(game.Players)
 end
 
--- Function to toggle the highlighting and deletion
+-- Function to delete bright red objects
+local function deleteBrightRedObject(object)
+    task.defer(function()
+        if object:IsA("BasePart") and object.BrickColor == originalHighlightColor then
+            object:Destroy()
+        elseif object:IsA("Model") then
+            for _, part in pairs(object:GetDescendants()) do
+                if part:IsA("BasePart") and part.BrickColor == originalHighlightColor then
+                    object:Destroy()
+                    break
+                end
+            end
+        end
+    end)
+end
+
+-- Function to toggle the highlighting
 local function toggleHighlighting()
     isHighlightingEnabled = not isHighlightingEnabled
-    if not isHighlightingEnabled then
-        for _, object in pairs(workspace:GetDescendants()) do
-            if object:IsA("BasePart") then
-                object.BrickColor = BrickColor.new("Bright green")
-            end
-        end
-    else
-        for _, object in pairs(workspace:GetDescendants()) do
-            if object:IsA("BasePart") then
-                object.BrickColor = originalHighlightColor
-            end
+    local newColor = isHighlightingEnabled and originalHighlightColor or alternateHighlightColor
+    for _, object in pairs(workspace:GetDescendants()) do
+        if object:IsA("BasePart") then
+            object.BrickColor = newColor
+        elseif object:IsA("Model") then
+            highlightObject(object)
         end
     end
 end
 
--- Highlight all existing workspace parts and models (excluding players, their models, and models with a humanoid)
-local workspaceObjects = workspace:GetChildren()
+-- Highlight all existing parts and models in specified services (excluding players and their models)
+local servicesToHighlight = {
+    workspace,
+    game:GetService("Lighting"),
+    game:GetService("ReplicatedStorage"),
+    game:GetService("ReplicatedFirst"),
+    game:GetService("ServerScriptService"),
+    game:GetService("ServerStorage"),
+    game:GetService("StarterPack"),
+    game:GetService("StarterPlayer"),
+    game:GetService("StarterGui"),
+    game:GetService("SoundService"),
+    game:GetService("Teams"),
+    game:GetService("Chat"),
+    game:GetService("TestService"),
+    game:GetService("PhysicsService"),
+    game:GetService("LocalizationService")
+}
 
-for _, object in pairs(workspaceObjects) do
-    if not shouldObjectBeExcluded(object) then
-        highlightObject(object)
+for _, service in pairs(servicesToHighlight) do
+    for _, object in pairs(service:GetDescendants()) do
+        if not shouldObjectBeExcluded(object) then
+            highlightObject(object)
+        end
     end
 end
 
--- Connect a function to run when new parts or models are added to the workspace
-workspace.ChildAdded:Connect(function(newChild)
-    if isHighlightingEnabled and not shouldObjectBeExcluded(newChild) then
+-- Connect a function to run when new parts or models are added to the services
+local function onChildAdded(newChild)
+    if not shouldObjectBeExcluded(newChild) then
         highlightObject(newChild)
-
-        -- Delay the deletion check slightly to ensure the part or model is properly highlighted
-        wait(0.1)
-
-        if not newChild:FindFirstChild("Highlighted") then
-            if not shouldObjectBeExcluded(newChild) and (newChild:IsA("BasePart") or newChild:IsA("Model")) and not isPlayer(newChild) then
-                newChild:Destroy()
-            end
-        end
+        deleteBrightRedObject(newChild)
     end
-end)
+end
+
+for _, service in pairs(servicesToHighlight) do
+    service.ChildAdded:Connect(onChildAdded)
+end
 
 -- Function to handle the keybind
 local function onKeyPress(input)
-    if input.KeyCode == Enum.KeyCode.F then -- Change the keybind to your desired key
+    if input.KeyCode == Enum.KeyCode.F3 then -- Change the keybind to F3
         toggleHighlighting()
     end
 end
